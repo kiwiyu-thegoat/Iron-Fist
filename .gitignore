@@ -85,3 +85,8 @@ __pycache__/
 # Private device-testing configuration and release plans
 /device-testing.local.json
 /device-release.local.json
+
+# Tekken 6 profile: the user's own executable, analysis output and generated code
+/profiles/tekken6/game/
+/profiles/tekken6/analysis/
+/profiles/tekken6/generated/
