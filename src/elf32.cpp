@@ -363,8 +363,25 @@ std::optional<PspModuleInfo> Elf32Image::find_module_info(const GuestMemory &mem
     const auto section_it = std::find_if(sections_.begin(), sections_.end(), [](const ElfSection &section) {
         return section.name == ".rodata.sceModuleInfo" || section.name == ".sceModuleInfo";
     });
-    if (section_it == sections_.end() || section_it->size < sizeof(ModuleInfo32)) return std::nullopt;
-    const std::uint32_t addr = section_runtime_address(*section_it, load_base);
+    std::uint32_t addr = 0;
+    if (section_it != sections_.end() && section_it->size >= sizeof(ModuleInfo32)) {
+        addr = section_runtime_address(*section_it, load_base);
+    } else {
+        // A stripped executable has no section headers, but its first loadable
+        // segment's p_paddr still points at the module info: it is the offset of
+        // that structure in the file, with the kernel-address bit masked off.
+        // Retail EBOOTs ship this way.
+        const auto seg_it = std::find_if(segments_.begin(), segments_.end(),
+                                         [](const ElfSegment &seg) { return seg.type == kPtLoad; });
+        if (seg_it == segments_.end()) return std::nullopt;
+        const std::uint32_t file_offset = seg_it->paddr & 0x7FFFFFFFu;
+        if (file_offset < seg_it->offset || file_offset - seg_it->offset > seg_it->file_size ||
+            seg_it->file_size - (file_offset - seg_it->offset) < sizeof(ModuleInfo32)) {
+            return std::nullopt;
+        }
+        addr = seg_it->vaddr + (file_offset - seg_it->offset);
+        if (is_psp_prx()) addr += load_base;
+    }
     if (!memory.contains(addr, sizeof(ModuleInfo32))) return std::nullopt;
 
     char name[28]{};
