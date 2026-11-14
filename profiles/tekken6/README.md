@@ -1,8 +1,10 @@
 # Tekken 6 (ULUS-10466)
 
-A Yakumo-style profile for the PSP version of Tekken 6. **Early stage:** the
-executable is analyzed and recompiled to C++, and the generated code compiles.
-There is no host yet (kernel, graphics, audio, input), so nothing runs.
+A Yakumo-style profile for the PSP version of Tekken 6. **Early stage.** The
+executable is recompiled to C++, the generated code compiles, and a headless
+bring-up host runs it through startup and graphics initialization to the point
+where it asks for its data files (`disc0:/PSP_GAME/USRDIR/DATA401.IDX`). There is
+no renderer, audio or input yet, so nothing is drawn or played.
 
 This profile contains no game files. You supply the decrypted executable from
 your own copy; everything generated from it stays on your machine and is ignored
@@ -40,17 +42,35 @@ cmake --build out/tekken6 --target tekken6_generated
 Measured on a one-core machine: analysis about 1 second, code generation about
 1 minute (254 units, 259 MB of C++), about 9 seconds to compile one unit.
 
-## Host work still to do
+## The headless host (`host/`)
 
-The mhp3rd host already handles about 142 of Tekken's 268 imports (rough count
-by name and NID). Still missing:
+`tekken6_headless <EBOOT.ELF> [disc.iso] [max_dispatches]` runs the recompiled
+game with no window. It shares the mhp3rd kernel and its thread, memory, file and
+system firmware code in place (no copy), plus:
 
-- `scePsmfPlayer` (14), the movie player; mhp3rd uses `sceMpeg` instead
-- `sceRtc` (11 more), `sceUmdUser` (4), `scePower` (4), `sceDisplay` (3)
-- `sceNetApctl` (7), `sceNetInet` (3), network state calls
-- the `sceSasCore` calls (27) need checking against the host's mixer
-- 13 `ThreadManForUser`, 13 `IoFileMgrForUser` (async and filesystem calls)
+- `hle_tekken.cpp` waiting on a thread to end, lightweight mutexes, virtual
+  timers, fixed-size pools, module loading
+- `hle_tekken_system.cpp` the clock (sceRtc), clock speeds, language, network
+  state (always "not connected")
+- `hle_tekken_gpu.cpp` the display and GE with no drawing: the real video memory
+  base, vblank waits, lists that finish at once
+- `shims.cpp` "feature off" answers for mhp3rd things Tekken does not have
 
-Then the profile needs its own main, configuration, a decision on how much of
-the mhp3rd renderer, audio and input code to share, and 60 fps pacing (mhp3rd
-runs at 30).
+Any import with no handler gets a logging stub that prints its first call, so the
+log is the to-do list. Useful switches: `TEKKEN6_WATCHDOG=<seconds>` reports where
+the guest is if it is still running, `PSPRECOMP_HLE_HISTOGRAM=1` counts firmware
+calls, `TEKKEN6_DUMP_THUNKS=1` prints a few import thunks.
+
+Gotchas found on the way: (1) `psp_recomp` must see the module info or it emits
+no import wrappers (rebuild the framework tools after the `src/elf32.cpp`
+change); (2) never pipe `psp_recomp` through `head`, it is killed partway and
+leaves a half-regenerated corpus.
+
+## Still to do
+
+- The disc: put your ISO's contents where `game_root` points, or pass the ISO.
+- Imports with no handler yet (the stub log shows the first ones): `sceDisplay`
+  hcount, `sceWlanGetEtherAddr`, a SetCompiledSdkVersion variant, cache-range calls.
+- Everything visible and audible: a renderer (the mhp3rd Vulkan renderer and GE
+  state tracker are the starting point), audio (SAS and ATRAC3+), input, PSMF movies.
+- 60 fps pacing (mhp3rd runs at 30) and the 887 VFPU-heavy functions' correctness.
