@@ -328,6 +328,29 @@ void register_io(
         file.size = std::max(file.size, file.position);
         kernel().finish(ctx, size);
     });
+    // sceIoIoctl(fd, command, indata, inlen, outdata, outlen). Games that read the
+    // disc by sector ask a file where it starts: command 0x01020006 returns the
+    // file's first sector, which they turn into disc0:/sce_lbn... paths. Other
+    // commands are refused, as the firmware does for ones it does not know.
+    hle.add("IoFileMgrForUser", "sceIoIoctl", [](Runtime &rt, AllegrexContext &ctx) {
+        constexpr std::uint32_t kGetUmdFileStartSector = 0x01020006u;
+        constexpr std::uint32_t kInvalidArgument = 0x80010016u;
+        auto found = io().files.find(arg(ctx, 0));
+        if (found == io().files.end()) {
+            kernel().finish(ctx, io_error::kBadFileDescriptor);
+            return;
+        }
+        const OpenFile &file = found->second;
+        const std::uint32_t outdata = arg(ctx, 4);
+        if (arg(ctx, 1) == kGetUmdFileStartSector && file.kind == OpenFile::Kind::Disc && outdata != 0u &&
+            arg(ctx, 5) >= 4u) {
+            rt.memory().store32(outdata, static_cast<std::uint32_t>(file.disc_offset / IsoImage::kSectorSize));
+            kernel().finish(ctx, 0u);
+            return;
+        }
+        kernel().finish(ctx, kInvalidArgument);
+    });
+
     hle.add("IoFileMgrForUser", "sceIoLseek", [](Runtime &, AllegrexContext &ctx) {
         auto found = io().files.find(arg(ctx, 0));
         if (found == io().files.end()) {
