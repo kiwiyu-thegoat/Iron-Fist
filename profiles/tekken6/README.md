@@ -66,6 +66,21 @@ no import wrappers (rebuild the framework tools after the `src/elf32.cpp`
 change); (2) never pipe `psp_recomp` through `head`, it is killed partway and
 leaves a half-regenerated corpus.
 
+## Where it stands with game data
+
+With the files from `PSP_GAME/USRDIR` packed into a test ISO
+(`scripts/make_test_iso.py <USRDIR> out.iso`), the game opens `DATA401.IDX`, asks
+for its start sector (the host answers `sceIoIoctl` 0x01020006), reads the
+120-byte `DINF_400.BIN`, creates six threads, then stops in its request-pool code
+on a null pointer that real hardware would not reach. The big archive
+`DATA401.BIN` (`DINF_400.BIN` gives its size as 0x16E42800, about 366 MiB) was not
+supplied, so it is not yet known whether that is a host bug or the game taking an
+error path. Debug switches: `MHP3RD_TRACE_IO=1`, `TEKKEN6_DUMP="0xADDR:0xLEN,..."`,
+`TEKKEN6_TRACE_MUTEX=1`, `PSPRECOMP_TRACE_ON_ERROR=1`.
+
+The shared `mhp3rd/host/hle/hle_io.cpp` gains one handler, `sceIoIoctl`, used only
+when a title asks for a UMD file's start sector.
+
 ## Still to do
 
 - The disc: put your ISO's contents where `game_root` points, or pass the ISO.
