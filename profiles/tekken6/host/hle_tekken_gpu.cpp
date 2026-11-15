@@ -29,6 +29,7 @@ struct NidEntry {
 };
 
 constexpr NidEntry kNids[] = {
+    {"sceDisplay", "sceDisplayGetCurrentHcount", 0x773DD3A3u},
     {"sceDisplay", "sceDisplaySetMode", 0x0E20F177u},
     {"sceDisplay", "sceDisplaySetFrameBuf", 0x289D82FEu},
     {"sceDisplay", "sceDisplayGetFrameBuf", 0xEEDA2E54u},
@@ -80,6 +81,10 @@ void register_tekken_gpu(mhp3rd::HleRegistrar &hle) {
     hle.add("sceDisplay", "sceDisplayIsVblank", finish_zero);
     hle.add("sceDisplay", "sceDisplayGetVcount", [](Runtime &, AllegrexContext &ctx) {
         kernel().finish(ctx, static_cast<std::uint32_t>(kernel().vblank_count()));
+    });
+    hle.add("sceDisplay", "sceDisplayGetCurrentHcount", [](Runtime &, AllegrexContext &ctx) {
+        // 286 horizontal-sync pulses per frame is close to the hardware's count.
+        kernel().finish(ctx, static_cast<std::uint32_t>(kernel().vblank_count() * 286u));
     });
     hle.add("sceDisplay", "sceDisplayWaitVblankStart", wait_vblank);
     hle.add("sceDisplay", "sceDisplayWaitVblankStartCB", wait_vblank);

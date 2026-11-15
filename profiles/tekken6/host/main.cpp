@@ -82,7 +82,35 @@ int main(int argc, char **argv) {
                 std::_Exit(5);
             }).detach();
         }
-        runtime.run(elf.runtime_entry(tekken6::kLoadBase), max_dispatches);
+        try {
+            runtime.run(elf.runtime_entry(tekken6::kLoadBase), max_dispatches);
+        } catch (...) {
+            // TEKKEN6_DUMP="0xADDR:0xLEN,0xADDR:0xLEN" prints guest memory when the run
+            // dies, for looking at the structures the game was working on.
+            if (const char *spec = std::getenv("TEKKEN6_DUMP")) {
+                std::string text = spec;
+                for (std::size_t start = 0; start < text.size();) {
+                    const std::size_t end = text.find(',', start);
+                    const std::string item = text.substr(start, end == std::string::npos ? end : end - start);
+                    const std::size_t colon = item.find(':');
+                    if (colon != std::string::npos) {
+                        const auto address = static_cast<std::uint32_t>(std::strtoul(item.c_str(), nullptr, 0));
+                        const auto length = static_cast<std::uint32_t>(std::strtoul(item.c_str() + colon + 1, nullptr, 0));
+                        std::cerr << "[dump] " << psprecomp::hex32(address) << ":";
+                        for (std::uint32_t offset = 0; offset < length; offset += 4u) {
+                            if (offset % 16u == 0u) std::cerr << "\n  " << psprecomp::hex32(address + offset) << ":";
+                            std::cerr << " " << psprecomp::hex32(runtime.memory().load32(address + offset));
+                        }
+                        std::cerr << "\n";
+                    }
+                    if (end == std::string::npos) break;
+                    start = end + 1u;
+                }
+            }
+            runtime.report_hle_histogram(60u);
+            std::cerr << mhp3rd::kernel().describe_threads() << std::endl;
+            throw;
+        }
         std::cout << "Runtime stopped: " << runtime.stop_reason() << "\n";
         std::cout << mhp3rd::kernel().describe_threads() << "\n";
         runtime.report_hle_histogram();

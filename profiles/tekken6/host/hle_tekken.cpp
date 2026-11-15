@@ -2,8 +2,12 @@
 
 #include "kernel/kernel.hpp"
 
+#include "psprecomp/common.hpp"
+
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
+#include <iostream>
 #include <map>
 #include <string>
 #include <vector>
@@ -29,6 +33,8 @@ struct NidEntry {
 };
 
 constexpr NidEntry kNids[] = {
+    {"sceWlanDrv", "sceWlanGetEtherAddr", 0x0C622081u},
+    {"IoFileMgrForUser", "sceIoIoctl", 0x63632449u},
     {"ThreadManForUser", "sceKernelTryLockMutex", 0x0DDCD2C9u},
     {"ThreadManForUser", "sceKernelWaitThreadEndCB", 0x840E8133u},
     {"ThreadManForUser", "sceKernelCreateLwMutex", 0x19CFF145u},
@@ -158,6 +164,21 @@ SceUID lw_uid(const Runtime &rt, std::uint32_t workarea) {
 }
 
 void register_mutexes(mhp3rd::HleRegistrar &hle) {
+    if (std::getenv("TEKKEN6_TRACE_MUTEX") != nullptr) {
+        // Diagnostic: report $s0 and the calling thread around each unlock/lock, using
+        // this file's own lock code in place of the shared one.
+        hle.add("ThreadManForUser", "sceKernelUnlockMutex", [](Runtime &, AllegrexContext &ctx) {
+            std::cerr << "[mutex] unlock uid=" << arg(ctx, 0) << " thread=" << kernel().current_uid()
+                      << " s0=" << psprecomp::hex32(ctx.gpr[16]) << " ra=" << psprecomp::hex32(ctx.gpr[31]) << "\n";
+            unlock_mutex(ctx, as_signed(arg(ctx, 0)), as_signed(arg(ctx, 1)));
+            std::cerr << "[mutex]   after: s0=" << psprecomp::hex32(ctx.gpr[16]) << " thread=" << kernel().current_uid() << "\n";
+        });
+        hle.add("ThreadManForUser", "sceKernelLockMutex", [](Runtime &, AllegrexContext &ctx) {
+            std::cerr << "[mutex] lock   uid=" << arg(ctx, 0) << " thread=" << kernel().current_uid()
+                      << " s0=" << psprecomp::hex32(ctx.gpr[16]) << " ra=" << psprecomp::hex32(ctx.gpr[31]) << "\n";
+            lock_mutex(ctx, as_signed(arg(ctx, 0)), as_signed(arg(ctx, 1)), arg(ctx, 2), true);
+        });
+    }
     hle.add("ThreadManForUser", "sceKernelTryLockMutex", [](Runtime &, AllegrexContext &ctx) {
         lock_mutex(ctx, as_signed(arg(ctx, 0)), as_signed(arg(ctx, 1)), 0u, false);
     });

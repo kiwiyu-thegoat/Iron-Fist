@@ -158,6 +158,21 @@ void register_rtc(mhp3rd::HleRegistrar &hle) {
 void finish_constant(AllegrexContext &ctx, std::uint32_t value) { kernel().finish(ctx, value); }
 
 void register_machine(mhp3rd::HleRegistrar &hle) {
+    hle.add("ThreadManForUser", "sceKernelSysClock2USec", [](Runtime &rt, AllegrexContext &ctx) {
+        // (SceKernelSysClock *clock, u32 *seconds, u32 *microseconds). A sysclock is
+        // already microseconds, so this splits it.
+        const std::uint64_t microseconds = load_u64(rt.memory(), arg(ctx, 0));
+        if (arg(ctx, 1) != 0u) rt.memory().store32(arg(ctx, 1), static_cast<std::uint32_t>(microseconds / 1000000ull));
+        if (arg(ctx, 2) != 0u) rt.memory().store32(arg(ctx, 2), static_cast<std::uint32_t>(microseconds % 1000000ull));
+        kernel().finish(ctx, 0u);
+    });
+    hle.add("sceWlanDrv", "sceWlanGetEtherAddr", [](Runtime &rt, AllegrexContext &ctx) {
+        // A locally administered address (bit 1 of the first byte set).
+        static constexpr std::uint8_t kMac[6] = {0x02, 0x50, 0x53, 0x50, 0x00, 0x01};
+        for (std::uint32_t i = 0; i < 6u; ++i) rt.memory().store8(arg(ctx, 0) + i, kMac[i]);
+        kernel().finish(ctx, 0u);
+    });
+
     // A retail PSP at its default speeds.
     hle.add("scePower", "scePowerGetPllClockFrequencyInt", [](Runtime &, AllegrexContext &ctx) { finish_constant(ctx, 222u); });
     hle.add("scePower", "scePowerGetCpuClockFrequencyInt", [](Runtime &, AllegrexContext &ctx) { finish_constant(ctx, 222u); });
